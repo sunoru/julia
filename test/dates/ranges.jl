@@ -33,6 +33,8 @@ let
                 @test !(l1 in dr)
                 @test !(f1 - pos_step in dr)
                 @test !(l1 + pos_step in dr)
+                @test dr == []
+                @test hash(dr) == hash([])
 
                 for (f, l) in ((f2, l2), (f3, l3), (f4, l4))
                     dr = f:pos_step:l
@@ -53,6 +55,8 @@ let
                         @test length(dr1) == len
                         @test findin(dr, dr) == [1:len;]
                         @test length([dr;]) == len
+                        @test dr == dr1
+                        @test hash(dr) == hash(dr1)
                     end
                     @test !isempty(reverse(dr))
                     @test length(reverse(dr)) == len
@@ -87,6 +91,8 @@ let
                 @test !(l1 in dr)
                 @test !(l1 - neg_step in dr)
                 @test !(l1 + neg_step in dr)
+                @test dr == []
+                @test hash(dr) == hash([])
 
                 for (f, l) in ((f2, l2), (f3, l3), (f4, l4))
                     dr = l:neg_step:f
@@ -107,6 +113,8 @@ let
                         @test length(dr1) == len
                         @test findin(dr, dr) == [1:len;]
                         @test length([dr;]) == len
+                        @test dr == dr1
+                        @test hash(dr) == hash(dr1)
                     end
                     @test !isempty(reverse(dr))
                     @test length(reverse(dr)) == len
@@ -143,6 +151,8 @@ let
                     @test !(l1 in dr)
                     @test !(f1 - pos_step in dr)
                     @test !(l1 + pos_step in dr)
+                    @test dr == []
+                    @test hash(dr) == hash([])
 
                     for (f, l) in ((f2, l2), (f3, l3), (f4, l4))
                         dr = f:pos_step:l
@@ -163,6 +173,8 @@ let
                             @test length(dr1) == len
                             @test findin(dr, dr) == [1:len;]
                             @test length([dr;]) == len
+                            @test dr == dr1
+                            @test hash(dr) == hash(dr1)
                         end
                         @test !isempty(reverse(dr))
                         @test length(reverse(dr)) == len
@@ -197,6 +209,8 @@ let
                     @test !(l1 in dr)
                     @test !(l1 - neg_step in dr)
                     @test !(l1 + neg_step in dr)
+                    @test dr == []
+                    @test hash(dr) == hash([])
 
                     for (f, l) in ((f2, l2), (f3, l3), (f4, l4))
                         dr = l:neg_step:f
@@ -217,6 +231,8 @@ let
                             @test length(dr1) == len
                             @test findin(dr, dr) == [1:len;]
                             @test length([dr;]) == len
+                            @test dr == dr1
+                            @test hash(dr) == hash(dr1)
                         end
                         @test !isempty(reverse(dr))
                         @test length(reverse(dr)) == len

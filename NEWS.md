@@ -40,6 +40,12 @@ This section lists changes that do not have deprecation warnings.
     of the socket. Previously the address of the remote endpoint was being
     returned ([#21825]).
 
+  * `Range` objects are now considered as equal to other `AbstractArray` objects
+    by `==` and `isequal` if all of their elements are equal ([#16401]).
+    This has required changing the hashing algorithm: ranges now use an O(N) fallback
+    instead of a O(1) specialized method unless they define the `Base.TypeRangeStep`
+    trait; see its documentation for details.
+
 Library improvements
 --------------------
 
