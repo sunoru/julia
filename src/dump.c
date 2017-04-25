@@ -2285,6 +2285,8 @@ static jl_value_t *read_verify_mod_list(ios_t *s, arraylist_t *dependent_worlds)
         if (jl_binding_resolved_p(jl_main_module, sym)) {
             m = (jl_module_t*)jl_get_global(jl_main_module, sym);
             // Potentially two modules with the same name.
+            // TODO: if m in (Base, Main, Core), the require call will fail
+            // This is currently handeled in `stale_cachefile`
             if (m && jl_is_module(m) && m->uuid != uuid)
                 m = NULL;
         }

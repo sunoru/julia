@@ -747,10 +747,8 @@ function stale_cachefile(modpath::String, cachefile::String)
 
         # Check if transitive dependencies can be fullfilled
         for (mod, uuid) in required_modules
-            if mod == :Main || mod == :Core || mod == :Base
-                continue
             # Module is already loaded
-            elseif isbindingresolved(Main, mod)
+            if isbindingresolved(Main, mod)
                 current_uuid = module_uuid(getfield(Main, mod))
                 # Depends on the assumption that uuid monotonically increase
                 if current_uuid > uuid
