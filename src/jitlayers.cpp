@@ -109,14 +109,13 @@ void jl_init_jit(Type *T_pjlvalue_)
 
 // this defines the set of optimization passes defined for Julia at various optimization levels
 #if JL_LLVM_VERSION >= 30700
-void addOptimizationPasses(legacy::PassManager *PM)
+void addOptimizationPasses(legacy::PassManager *PM, int opt_level)
 #else
-void addOptimizationPasses(PassManager *PM)
+void addOptimizationPasses(PassManager *PM, int opt_level)
 #endif
 {
-    PM->add(createLowerExcHandlersPass());
-    PM->add(createLowerGCFramePass());
 #ifdef JL_DEBUG_BUILD
+    PM->add(createGCInvariantVerifierPass(true));
     PM->add(createVerifierPass());
 #endif
 
@@ -130,15 +129,19 @@ void addOptimizationPasses(PassManager *PM)
 #if defined(JL_MSAN_ENABLED)
     PM->add(llvm::createMemorySanitizerPass(true));
 #endif
-    if (jl_options.opt_level == 0) {
+    if (opt_level == 0) {
         PM->add(createCFGSimplificationPass()); // Clean up disgusting code
         PM->add(createMemCpyOptPass()); // Remove memcpy / form memset
-        PM->add(createLowerPTLSPass(imaging_mode));
 #if JL_LLVM_VERSION >= 40000
         PM->add(createAlwaysInlinerLegacyPass()); // Respect always_inline
 #else
         PM->add(createAlwaysInlinerPass()); // Respect always_inline
 #endif
+        PM->add(createBarrierNoopPass());
+        PM->add(createLowerExcHandlersPass());
+        PM->add(createGCInvariantVerifierPass(false));
+        PM->add(createLateLowerGCFramePass());
+        PM->add(createLowerPTLSPass(imaging_mode));
         return;
     }
 #if JL_LLVM_VERSION >= 30700
@@ -176,7 +179,6 @@ void addOptimizationPasses(PassManager *PM)
 #endif
     // Let the InstCombine pass remove the unnecessary load of
     // safepoint address first
-    PM->add(createLowerPTLSPass(imaging_mode));
     PM->add(createSROAPass());                 // Break up aggregate allocas
 #ifndef INSTCOMBINE_BUG
     PM->add(createInstructionCombiningPass()); // Cleanup for scalarrepl.
@@ -266,6 +268,14 @@ void addOptimizationPasses(PassManager *PM)
     PM->add(createLoopVectorizePass());         // Vectorize loops
     PM->add(createInstructionCombiningPass());  // Clean up after loop vectorizer
 #endif
+    // LowerPTLS removes an indirect call. As a result, it is likely to trigger
+    // LLVM's devirtualization heuristics, which would result in the entire
+    // pass pipeline being re-exectuted. Prevent this by inserting a barrier.
+    PM->add(createBarrierNoopPass());
+    PM->add(createLowerExcHandlersPass());
+    PM->add(createGCInvariantVerifierPass(false));
+    PM->add(createLateLowerGCFramePass());
+    PM->add(createLowerPTLSPass(imaging_mode));
 }
 
 #ifdef USE_ORCJIT
@@ -491,12 +501,16 @@ JuliaOJIT::JuliaOJIT(TargetMachine &TM)
         )
 {
     if (!jl_generating_output()) {
-        addOptimizationPasses(&PM);
+        addOptimizationPasses(&PM, jl_options.opt_level);
     }
     else {
+        PM.add(createGCInvariantVerifierPass(true));
+        PM.add(createVerifierPass());
+        //PM.add(createLowerGCFramePass());
         PM.add(createLowerExcHandlersPass());
-        PM.add(createLowerGCFramePass());
+        PM.add(createLateLowerGCFramePass());
         PM.add(createLowerPTLSPass(imaging_mode));
+        PM.add(createVerifierPass());
     }
     if (TM.addPassesToEmitMC(PM, Ctx, ObjStream))
         llvm_unreachable("Target does not support MC emission.");
@@ -1240,7 +1254,7 @@ void jl_dump_native(const char *bc_fname, const char *obj_fname, const char *sys
     PM.add(new DataLayout(*jl_ExecutionEngine->getDataLayout()));
 #endif
 
-    addOptimizationPasses(&PM);
+    addOptimizationPasses(&PM, jl_options.opt_level);
 
     std::unique_ptr<raw_fd_ostream> bc_OS;
     std::unique_ptr<raw_fd_ostream> obj_OS;
@@ -1311,7 +1325,11 @@ void jl_dump_native(const char *bc_fname, const char *obj_fname, const char *sys
 #if JL_LLVM_VERSION >= 30700
     // Reset the target triple to make sure it matches the new target machine
     clone->setTargetTriple(TM->getTargetTriple().str());
-#if JL_LLVM_VERSION >= 30800
+#if JL_LLVM_VERSION >= 40000
+    DataLayout DL = TM->createDataLayout();
+    DL.reset(DL.getStringRepresentation() + "-ni:10:11:12");
+    clone->setDataLayout(DL);
+#elif JL_LLVM_VERSION >= 30800
     clone->setDataLayout(TM->createDataLayout());
 #else
     clone->setDataLayout(TM->getDataLayout()->getStringRepresentation());
