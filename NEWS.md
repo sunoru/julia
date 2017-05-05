@@ -48,6 +48,9 @@ Deprecated or removed
 
   * The method `srand(rng, filename, n=4)` has been deprecated ([#21359]).
 
+  * The `corrected` positional argument to `cov` has been deprecated in favor of
+    a keyword argument with the same name (#21709).
+
 
 Julia v0.6.0 Release Notes
 ==========================
