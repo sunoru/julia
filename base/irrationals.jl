@@ -96,6 +96,7 @@ end
 
 isfinite(::Irrational) = true
 iszero(::Irrational) = false
+isinteger(::Irrational) = false
 
 hash(x::Irrational, h::UInt) = 3*object_id(x) - h
 
