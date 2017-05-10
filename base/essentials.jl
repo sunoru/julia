@@ -34,16 +34,6 @@ convert(::Type{Tuple{Vararg{T}}}, x::Tuple) where {T} = cnvt_all(T, x...)
 cnvt_all(T) = ()
 cnvt_all(T, x, rest...) = tuple(convert(T,x), cnvt_all(T, rest...)...)
 
-macro generated(f)
-    isa(f, Expr) || error("invalid syntax; @generated must be used with a function definition")
-    if f.head === :function || (isdefined(:length) && f.head === :(=) && length(f.args) == 2 && f.args[1].head == :call)
-        f.head = :stagedfunction
-        return Expr(:escape, f)
-    else
-        error("invalid syntax; @generated must be used with a function definition")
-    end
-end
-
 """
     @eval [mod,] ex
 
@@ -51,7 +41,7 @@ Evaluate an expression with values interpolated into it using `eval`.
 If two arguments are provided, the first is the module to evaluate in.
 """
 macro eval(ex)
-    :(eval($(current_module()), $(Expr(:quote,ex))))
+    :(eval($__module__, $(Expr(:quote,ex))))
 end
 macro eval(mod, ex)
     :(eval($(esc(mod)), $(Expr(:quote,ex))))

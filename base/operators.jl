@@ -902,7 +902,7 @@ julia> filter(!isalpha, str)
 # some operators not defined yet
 global //, >:, <|, hcat, hvcat, ⋅, ×, ∈, ∉, ∋, ∌, ⊆, ⊈, ⊊, ∩, ∪, √, ∛
 
-this_module = current_module()
+this_module = @__MODULE__
 baremodule Operators
 
 export

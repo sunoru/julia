@@ -65,6 +65,11 @@ Deprecated or removed
 
   * The method `srand(rng, filename, n=4)` has been deprecated ([#21359]).
 
+  * The function `current_module` is deprecated and replaced with `@__MODULE__` ([#22064]).
+    This caused the deprecation of some reflection methods (such as `macroexpand` and `isconst`),
+    which now require a module argument.
+    And it caused the bugfix of other default arguments to use the Main module (including `whos`, `which`).
+
 
 Julia v0.6.0 Release Notes
 ==========================
