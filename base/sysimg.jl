@@ -422,6 +422,24 @@ end
 INCLUDE_STATE = 3 # include = include_from_node1
 include("precompile.jl")
 
+@noinline function test_clone_f(a)
+    s = zero(eltype(a))
+    @inbounds @simd for i in 1:length(a)
+        s += a[i]
+    end
+    return s
+end
+
+@noinline function test_clone_g(a, n)
+    s = zero(eltype(a))
+    for i in 1:n
+        s += test_clone_f(a)
+    end
+    return s
+end
+
+test_clone_g(Float64[], 1)
+
 end # baremodule Base
 
 using Base

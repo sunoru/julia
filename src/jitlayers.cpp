@@ -177,6 +177,7 @@ void addOptimizationPasses(PassManager *PM)
     // Let the InstCombine pass remove the unnecessary load of
     // safepoint address first
     PM->add(createLowerPTLSPass(imaging_mode));
+    PM->add(createJuliaMVPass());
     PM->add(createSROAPass());                 // Break up aggregate allocas
 #ifndef INSTCOMBINE_BUG
     PM->add(createInstructionCombiningPass()); // Cleanup for scalarrepl.
@@ -1094,7 +1095,7 @@ static void jl_gen_llvm_globaldata(llvm::Module *mod, ValueToValueMapTy &VMap,
     ArrayType *fvars_type = ArrayType::get(T_pvoidfunc, jl_sysimg_fvars.size());
     addComdat(new GlobalVariable(*mod,
                                  fvars_type,
-                                 true,
+                                 false,
                                  GlobalVariable::ExternalLinkage,
                                  MapValue(ConstantArray::get(fvars_type, ArrayRef<Constant*>(jl_sysimg_fvars)), VMap),
                                  "jl_sysimg_fvars"));

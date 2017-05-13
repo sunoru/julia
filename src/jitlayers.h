@@ -249,6 +249,7 @@ JL_DLLEXPORT extern LLVMContext &jl_LLVMContext;
 Pass *createLowerPTLSPass(bool imaging_mode);
 Pass *createLowerGCFramePass();
 Pass *createLowerExcHandlersPass();
+Pass *createJuliaMVPass();
 // Whether the Function is an llvm or julia intrinsic.
 static inline bool isIntrinsicFunction(Function *F)
 {

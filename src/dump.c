@@ -244,6 +244,26 @@ static void jl_load_sysimg_so(void)
         *sysimg_gvars[tls_offset_idx - 1] =
             (jl_value_t*)(uintptr_t)(jl_tls_offset == -1 ? 0 : jl_tls_offset);
 #endif
+#if defined(_CPU_X86_64_) || defined(_CPU_X86_)
+        // WIP
+        typedef void (*dispatch_t)(size_t, size_t*, void***, size_t**);
+        dispatch_t dispatchf = (dispatch_t)jl_dlsym_e(jl_sysimg_handle,
+                                                      "jl_dispatch_sysimg_fvars");
+        if (dispatchf) {
+            size_t nfunc = 0;
+            void **fptrs = NULL;
+            size_t *fidxs = NULL;
+            dispatchf(jl_test_cpu_feature(JL_X86_avx2) &&
+                      jl_test_cpu_feature(JL_X86_fma) &&
+                      jl_test_cpu_feature(JL_X86_popcnt), &nfunc, &fptrs, &fidxs);
+            if (nfunc && fptrs && fidxs) {
+                for (size_t i = 0; i < nfunc; i++) {
+                    size_t fi = fidxs[i];
+                    sysimg_fvars[fi] = fptrs[i];
+                }
+            }
+        }
+#endif
 
 #ifdef _OS_WINDOWS_
         sysimage_base = (intptr_t)jl_sysimg_handle;
