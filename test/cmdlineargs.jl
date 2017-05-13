@@ -61,15 +61,6 @@ let exename = `$(Base.julia_cmd()) --precompiled=yes --startup-file=no`
     @test !success(`$exename -L`)
     @test !success(`$exename --load`)
 
-    # --cpu-target
-    # NOTE: this test only holds true if image_file is a shared library.
-    if Libdl.dlopen_e(unsafe_string(Base.JLOptions().image_file)) != C_NULL
-        @test !success(`$exename -C invalidtarget --precompiled=yes`)
-        @test !success(`$exename --cpu-target=invalidtarget --precompiled=yes`)
-    else
-        warn("--cpu-target test not runnable")
-    end
-
     # --procs
     @test readchomp(`$exename -q -p 2 -e "println(nworkers())"`) == "2"
     @test !success(`$exename -p 0`)

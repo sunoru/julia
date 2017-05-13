@@ -1081,12 +1081,6 @@ void jl_add_to_shadow(Module *m)
 }
 #endif
 
-#ifdef HAVE_CPUID
-extern "C" {
-    extern void jl_cpuid(int32_t CPUInfo[4], int32_t InfoType);
-}
-#endif
-
 static void jl_gen_llvm_globaldata(llvm::Module *mod, ValueToValueMapTy &VMap,
                                    const char *sysimg_data, size_t sysimg_len)
 {
@@ -1125,14 +1119,6 @@ static void jl_gen_llvm_globaldata(llvm::Module *mod, ValueToValueMapTy &VMap,
                                  "jl_tls_offset_idx"));
 #endif
 
-    Constant *feature_string = ConstantDataArray::getString(jl_LLVMContext, jl_options.cpu_target);
-    addComdat(new GlobalVariable(*mod,
-                                 feature_string->getType(),
-                                 true,
-                                 GlobalVariable::ExternalLinkage,
-                                 feature_string,
-                                 "jl_sysimg_cpu_target"));
-
     // reflect the address of the jl_RTLD_DEFAULT_handle variable
     // back to the caller, so that we can check for consistency issues
     GlobalValue *jlRTLD_DEFAULT_var = mod->getNamedValue("jl_RTLD_DEFAULT_handle");
@@ -1142,21 +1128,6 @@ static void jl_gen_llvm_globaldata(llvm::Module *mod, ValueToValueMapTy &VMap,
                                  GlobalVariable::ExternalLinkage,
                                  jlRTLD_DEFAULT_var,
                                  "jl_RTLD_DEFAULT_handle_pointer"));
-
-#ifdef HAVE_CPUID
-    // For native also store the cpuid
-    if (strcmp(jl_options.cpu_target,"native") == 0) {
-        uint32_t info[4];
-
-        jl_cpuid((int32_t*)info, 1);
-        addComdat(new GlobalVariable(*mod,
-                                     T_uint64,
-                                     true,
-                                     GlobalVariable::ExternalLinkage,
-                                     ConstantInt::get(T_uint64,((uint64_t)info[2])|(((uint64_t)info[3])<<32)),
-                                     "jl_sysimg_cpu_cpuid"));
-    }
-#endif
 
     if (sysimg_data) {
         Constant *data = ConstantDataArray::get(jl_LLVMContext,
