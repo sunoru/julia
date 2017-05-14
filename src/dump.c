@@ -7,6 +7,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "processor.h"
+
 #include "julia.h"
 #include "julia_internal.h"
 #include "builtin_proto.h"
