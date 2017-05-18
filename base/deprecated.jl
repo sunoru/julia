@@ -1342,6 +1342,35 @@ end
 @deprecate srand(filename::AbstractString, n::Integer=4) srand(read!(filename, Array{UInt32}(Int(n))))
 @deprecate MersenneTwister(filename::AbstractString)  srand(MersenneTwister(0), read!(filename, Array{UInt32}(Int(4))))
 
+# PR #21956
+for f in [:bfft, :bfft!, :brfft, :dct, :dct!, :fft, :fft!, :fftshift, :idct, :idct!,
+          :ifft, :ifft!, :ifftshift, :irfft, :plan_bfft, :plan_bfft!, :plan_brfft,
+          :plan_dct, :plan_dct!, :plan_fft, :plan_fft!, :plan_idct, :plan_idct!,
+          :plan_ifft, :plan_ifft!, :plan_irfft, :plan_rfft, :rfft,
+          :conv, :conv2, :deconv, :filt, :filt!, :xcorr]
+    @eval begin
+        function $f(args...; kwargs...)
+            error($f, " has been moved to the package FFTW.jl.\n",
+                  "Run `Pkg.add(\"FFTW\")` to install FFTW on Julia v0.7 and later, ",
+                  "and then run `using FFTW` to load it.")
+        end
+        export $f
+    end
+end
+module FFTW
+    for f in [:r2r, :r2r!, :plan_r2r, :plan_r2r!]
+        @eval begin
+            function $f(args...; kwargs...)
+                error($f, " has been moved to the package FFTW.jl.\n",
+                      "Run `Pkg.add(\"FFTW\")` to install FFTW on Julia v0.7 and later, ",
+                      "and then run `using FFTW` to load it.")
+            end
+            export $f
+        end
+    end
+end
+export FFTW
+
 # END 0.7 deprecations
 
 # BEGIN 1.0 deprecations
