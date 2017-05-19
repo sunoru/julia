@@ -119,15 +119,6 @@ void addOptimizationPasses(PassManager *PM, int opt_level)
     PM->add(createVerifierPass());
 #endif
 
-    // Due to bugs and missing features LLVM < 5.0, does not properly propagate
-    // our invariants. We need to do GC rooting here. This reduces the
-    // effectiveness of the optimization, but should retain correctness.
-#if JL_LLVM_VERSION < 50000
-    PM->add(createLowerExcHandlersPass());
-    PM->add(createLateLowerGCFramePass());
-    PM->add(createLowerPTLSPass(imaging_mode));
-#endif
-
 #if defined(JL_ASAN_ENABLED)
 #   if JL_LLVM_VERSION >= 30700 && JL_LLVM_VERSION < 30800
     // LLVM 3.7 BUG: ASAN pass doesn't properly initialize its dependencies
@@ -140,6 +131,14 @@ void addOptimizationPasses(PassManager *PM, int opt_level)
 #endif
     if (opt_level == 0) {
         PM->add(createCFGSimplificationPass()); // Clean up disgusting code
+#if JL_LLVM_VERSION < 50000
+        PM->add(createBarrierNoopPass());
+        PM->add(createLowerExcHandlersPass());
+        PM->add(createGCInvariantVerifierPass(false));
+        PM->add(createLateLowerGCFramePass());
+        PM->add(createLowerPTLSPass(imaging_mode));
+        PM->add(createBarrierNoopPass());
+#endif
         PM->add(createMemCpyOptPass()); // Remove memcpy / form memset
 #if JL_LLVM_VERSION >= 40000
         PM->add(createAlwaysInlinerLegacyPass()); // Respect always_inline
@@ -175,6 +174,16 @@ void addOptimizationPasses(PassManager *PM, int opt_level)
     // list of passes from vmkit
     PM->add(createCFGSimplificationPass()); // Clean up disgusting code
     PM->add(createPromoteMemoryToRegisterPass()); // Kill useless allocas
+
+    // Due to bugs and missing features LLVM < 5.0, does not properly propagate
+    // our invariants. We need to do GC rooting here. This reduces the
+    // effectiveness of the optimization, but should retain correctness.
+#if JL_LLVM_VERSION < 50000
+    PM->add(createLowerExcHandlersPass());
+    PM->add(createLateLowerGCFramePass());
+    PM->add(createLowerPTLSPass(imaging_mode));
+#endif
+
     PM->add(createMemCpyOptPass());
 
     // hopefully these functions (from llvmcall) don't try to interact with the Julia runtime
