@@ -1546,7 +1546,7 @@ function abstract_call_method(method::Method, f::ANY, sig::ANY, sparams::SimpleV
     sigtuple = unwrap_unionall(sig)::DataType
 
     tm = _topmod(sv)
-    if !istopfunction(tm, f, :promote_typeof) && !istopfunction(tm, f, :getindex)
+    if !istopfunction(tm, f, :promote_typeof) && !istopfunction(tm, f, :getindex) && !(method.sig == Tuple{Type, Any})
         # limit argument type tuple growth
         msig = unwrap_unionall(method.sig)
         lsig = length(msig.parameters)
