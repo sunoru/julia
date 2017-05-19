@@ -68,10 +68,9 @@ function union(s::Set, sets::Set...)
     return u
 end
 const ∪ = union
-union!(s::Set, xs) = _union!(s, xs)
-union!(s::Set, xs::AbstractArray) = (sizehint!(s, length(xs)); _union!(s, xs))
 
-function _union!(s::Set{T}, xs) where T
+function union!(s::Set{T}, xs) where T
+    isa(iteratorsize(xs), Union{HasShape, HasLength}) && sizehint!(s, length(xs))
     for x=xs
         push!(s,x)
         length(s) == max_values(T) && break
