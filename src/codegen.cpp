@@ -2408,10 +2408,16 @@ static Value *make_jlcall(ArrayRef<const jl_cgval_t*> args, jl_codectx_t *ctx)
       ConstantInt::get(T_int32, args.size()), "jlcall", ctx->ptlsStates);
     int slot = 0;
     assert(args.size() > 0);
+    Value *lifetime_largs = largs;
+#if JL_LLVM_VERSION < 50000
+    lifetime_largs = builder.CreateBitCast(largs, T_pint8);
+    auto lifetime_start = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_start);
+#else
     auto lifetime_start = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_start, {T_pprjlvalue});
+#endif
     builder.CreateCall(lifetime_start, {
       ConstantInt::get(T_int64, args.size()*sizeof(jl_value_t*)),
-      largs});
+      lifetime_largs});
     for (ArrayRef<const jl_cgval_t*>::iterator I = args.begin(), E = args.end(); I < E; ++I, ++slot) {
         Value *arg = boxed(**I, ctx, false); // mark_gc_use isn't needed since jlcall_frame_func can take ownership of this root
         GetElementPtrInst *newroot = GetElementPtrInst::Create(LLVM37_param(NULL) largs,
@@ -2421,6 +2427,19 @@ static Value *make_jlcall(ArrayRef<const jl_cgval_t*> args, jl_codectx_t *ctx)
         builder.CreateStore(arg, newroot);
     }
     return largs;
+}
+
+static void end_lifetime(Value *args, size_t size, jl_codectx_t *ctx) {
+    Value *lifetime_args = args;
+#if JL_LLVM_VERSION < 50000
+    lifetime_args = builder.CreateBitCast(args, T_pint8);
+    auto lifetime_end = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_end);
+#else
+    auto lifetime_end = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_end, {T_pprjlvalue});
+#endif
+    builder.CreateCall(lifetime_end, {
+      ConstantInt::get(T_int64, size*sizeof(jl_value_t*)),
+      lifetime_args});
 }
 
 static void jl_add_method_root(jl_codectx_t *ctx, jl_value_t *val)
@@ -2501,10 +2520,7 @@ static jl_cgval_t emit_getfield(jl_value_t *expr, jl_sym_t *name, jl_codectx_t *
     Value *result = builder.CreateCall3(prepare_call(jlgetfield_func),
       maybe_decay_untracked(V_null), myargs, ConstantInt::get(T_int32,2));
 #endif
-    auto lifetime_end = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_end, {T_pprjlvalue});
-    builder.CreateCall(lifetime_end, {
-      ConstantInt::get(T_int64, 2*sizeof(jl_value_t*)),
-      myargs});
+    end_lifetime(myargs, 2, ctx);
     bool needsgcroot = true; // !arg1.isimmutable || !jl_is_leaf_type(arg1.typ) || !is_datatype_all_pointers((jl_datatype_t*)arg1.typ); // TODO: probably want this as a llvm pass
     jl_cgval_t ret = mark_julia_type(result, true, jl_any_type, ctx, needsgcroot); // (typ will be patched up by caller)
     return ret;
@@ -3281,11 +3297,7 @@ static Value *emit_jlcall(Value *theFptr, Value *theF, jl_value_t **args,
                                         ConstantInt::get(T_int32,nargs));
 #endif
     if (nargs > 0) {
-        auto lifetime_end = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_end, {T_pprjlvalue});
-        builder.CreateCall(lifetime_end, {
-          ConstantInt::get(T_int64, nargs*sizeof(jl_value_t*)),
-          myargs
-        });
+        end_lifetime(myargs, nargs, ctx);
     }
     return result;
 }
@@ -3523,10 +3535,7 @@ static jl_cgval_t emit_call(jl_expr_t *ex, jl_codectx_t *ctx)
     Value *callval = builder.CreateCall2(prepare_call(jlapplygeneric_func),
                                   myargs, ConstantInt::get(T_int32, nargs));
 #endif
-    auto lifetime_end = Intrinsic::getDeclaration(jl_Module, Intrinsic::lifetime_end, {T_pprjlvalue});
-    builder.CreateCall(lifetime_end, {
-      ConstantInt::get(T_int64, nargs*sizeof(jl_value_t*)),
-      myargs});
+    end_lifetime(myargs, nargs, ctx);
     result = mark_julia_type(callval, true, expr_type(expr, ctx), ctx);
 
     JL_GC_POP();
@@ -4457,7 +4466,7 @@ static Function *gen_cfun_wrapper(jl_function_t *ff, jl_value_t *jlrettype, jl_t
         Value *lam_max = builder.CreateLoad(
                 builder.CreateConstInBoundsGEP1_32(
                     LLVM37_param(T_size)
-                    emit_bitcast(literal_pointer_val((jl_value_t*)lam), T_psize),
+                    emit_bitcast(decay_derived(literal_pointer_val((jl_value_t*)lam)), T_psize),
                     offsetof(jl_method_instance_t, max_world) / sizeof(size_t)));
         // XXX: age is always OK if we don't have a TLS. This is a hack required due to `@threadcall` abuse.
         // and adds quite a bit of complexity here, even though it's still wrong
@@ -4618,7 +4627,7 @@ static Function *gen_cfun_wrapper(jl_function_t *ff, jl_value_t *jlrettype, jl_t
             }
             else if (T->isAggregateType()) {
                 // aggregate types are passed by pointer
-                arg = decay_derived(data_pointer(inputarg, &ctx, T->getPointerTo()));
+                arg = data_pointer(inputarg, &ctx, T->getPointerTo());
             }
             else {
                 arg = emit_unbox(T, inputarg, spect);
@@ -7036,7 +7045,7 @@ static void init_julia_llvm_env(Module *m)
     std::vector<Type *> applytype_args(0);
     applytype_args.push_back(T_prjlvalue);
     applytype_args.push_back(T_prjlvalue);
-    applytype_args.push_back(PointerType::get(T_prjlvalue, AddressSpace::Tracked));
+    applytype_args.push_back(PointerType::get(T_prjlvalue, AddressSpace::Derived));
     jlapplytype_func =
         Function::Create(FunctionType::get(T_pjlvalue, applytype_args, false),
                          Function::ExternalLinkage,

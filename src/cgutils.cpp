@@ -256,7 +256,11 @@ static Value *emit_pointer_from_objref(Value *V)
     V = builder.CreateBitCast(decay_derived(V),
             PointerType::get(T_jlvalue, AddressSpace::Derived));
     CallInst *Call = builder.CreateCall(prepare_call(pointer_from_objref_func), V);
+#if JL_LLVM_VERSION >= 50000
     Call->addAttribute(AttributeList::FunctionIndex, Attribute::ReadNone);
+#else
+    Call->addAttribute(AttributeSet::FunctionIndex, Attribute::ReadNone);
+#endif
     return Call;
 }
 

@@ -119,6 +119,15 @@ void addOptimizationPasses(PassManager *PM, int opt_level)
     PM->add(createVerifierPass());
 #endif
 
+    // Due to bugs and missing features LLVM < 5.0, does not properly propagate
+    // our invariants. We need to do GC rooting here. This reduces the
+    // effectiveness of the optimization, but should retain correctness.
+#if JL_LLVM_VERSION < 50000
+    PM->add(createLowerExcHandlersPass());
+    PM->add(createLateLowerGCFramePass());
+    PM->add(createLowerPTLSPass(imaging_mode));
+#endif
+
 #if defined(JL_ASAN_ENABLED)
 #   if JL_LLVM_VERSION >= 30700 && JL_LLVM_VERSION < 30800
     // LLVM 3.7 BUG: ASAN pass doesn't properly initialize its dependencies
@@ -137,11 +146,13 @@ void addOptimizationPasses(PassManager *PM, int opt_level)
 #else
         PM->add(createAlwaysInlinerPass()); // Respect always_inline
 #endif
+#if JL_LLVM_VERSION >= 50000
         PM->add(createBarrierNoopPass());
         PM->add(createLowerExcHandlersPass());
         PM->add(createGCInvariantVerifierPass(false));
         PM->add(createLateLowerGCFramePass());
         PM->add(createLowerPTLSPass(imaging_mode));
+#endif
         return;
     }
 #if JL_LLVM_VERSION >= 30700
@@ -271,11 +282,13 @@ void addOptimizationPasses(PassManager *PM, int opt_level)
     // LowerPTLS removes an indirect call. As a result, it is likely to trigger
     // LLVM's devirtualization heuristics, which would result in the entire
     // pass pipeline being re-exectuted. Prevent this by inserting a barrier.
+#if JL_LLVM_VERSION >= 50000
     PM->add(createBarrierNoopPass());
     PM->add(createLowerExcHandlersPass());
     PM->add(createGCInvariantVerifierPass(false));
     PM->add(createLateLowerGCFramePass());
     PM->add(createLowerPTLSPass(imaging_mode));
+#endif
 }
 
 #ifdef USE_ORCJIT

@@ -196,10 +196,10 @@ blabel:
     store %jl_value_t addrspace(10)* %dboxed, %jl_value_t addrspace(10)** %frame21
     br label %common
 common:
-; CHECK: [[LIFT1:%.*]] = phi %jl_value_t addrspace(10)* [ null, %alabel ], [ %cboxed, %blabel ]
-; CHECK: [[LIFT2:%.*]] = phi %jl_value_t addrspace(10)* [ null, %alabel ], [ %dboxed, %blabel ]
-; CHECK: store %jl_value_t addrspace(10)* [[LIFT2]]
-; CHECK: store %jl_value_t addrspace(10)* [[LIFT1]]
+; CHECK-DAG: [[LIFT1:%.*]] = phi %jl_value_t addrspace(10)* [ null, %alabel ], [ %cboxed, %blabel ]
+; CHECK-DAG: [[LIFT2:%.*]] = phi %jl_value_t addrspace(10)* [ null, %alabel ], [ %dboxed, %blabel ]
+; CHECK-DAG: store %jl_value_t addrspace(10)* [[LIFT2]]
+; CHECK-DAG: store %jl_value_t addrspace(10)* [[LIFT1]]
     %callframe = phi %jl_value_t addrspace(10)** [ %frame1, %alabel], [ %frame2, %blabel ]
     call %jl_value_t addrspace(10)* @jl_apply_generic(%jl_value_t addrspace(10)* null, %jl_value_t addrspace(10)** %callframe, i32 2)
     ret void
@@ -241,43 +241,6 @@ succ:
 
 declare void @llvm.lifetime.start.p0p10s_jl_value_ts(i64, %jl_value_t addrspace(10)**)
 declare void @llvm.lifetime.end.p0p10s_jl_value_ts(i64, %jl_value_t addrspace(10)**)
-
-; Check that LLVM duplicating some blocks doesn't confuse the GC placement pass
-define void @bb_duplication(i1 %cnd, i64 %a, i64 %b) {
-; CHECK-LABEL: @bb_duplication
-; CHECK: %gcframe = alloca %jl_value_t addrspace(10)*, i32 4
-top:
-    %jlcall = alloca [2 x %jl_value_t addrspace(10)*], align 8
-    %ptls = call %jl_value_t*** @jl_get_ptls_states()
-    %jlcall.sub = getelementptr inbounds [2 x %jl_value_t addrspace(10)*], [2 x %jl_value_t addrspace(10)*]* %jlcall, i64 0, i64 0
-    %jlcall1 = getelementptr inbounds [2 x %jl_value_t addrspace(10)*], [2 x %jl_value_t addrspace(10)*]* %jlcall, i64 0, i64 1
-    br label %loop
-loop:
-    br i1 %cnd, label %A, label %B
-A:
-    %Aaboxed = call %jl_value_t addrspace(10)* @jl_box_int64(i64 signext %a)
-    %Abboxed = call %jl_value_t addrspace(10)* @jl_box_int64(i64 signext %b)
-    br i1 undef, label %loop, label %Abody
-
-Abody:
-    call void @llvm.lifetime.start.p0p10s_jl_value_ts(i64 16, %jl_value_t addrspace(10)** %jlcall.sub)
-    store %jl_value_t addrspace(10)* %Aaboxed, %jl_value_t addrspace(10)** %jlcall.sub
-    store %jl_value_t addrspace(10)* %Abboxed, %jl_value_t addrspace(10)** %jlcall1
-    call %jl_value_t addrspace(10)* @jl_apply_generic(%jl_value_t addrspace(10)* null, %jl_value_t addrspace(10)** %jlcall.sub, i32 2)
-    call void @llvm.lifetime.end.p0p10s_jl_value_ts(i64 16, %jl_value_t addrspace(10)** %jlcall.sub)
-    br i1 undef, label %loop, label %out
-B:
-    %Baboxed = call %jl_value_t addrspace(10)* @jl_box_int64(i64 signext %a)
-    %Bbboxed = call %jl_value_t addrspace(10)* @jl_box_int64(i64 signext %b)
-    call void @llvm.lifetime.start.p0p10s_jl_value_ts(i64 16, %jl_value_t addrspace(10)** %jlcall.sub)
-    store %jl_value_t addrspace(10)* %Baboxed, %jl_value_t addrspace(10)** %jlcall.sub
-    store %jl_value_t addrspace(10)* %Bbboxed, %jl_value_t addrspace(10)** %jlcall1
-    call %jl_value_t addrspace(10)* @jl_apply_generic(%jl_value_t addrspace(10)* null, %jl_value_t addrspace(10)** %jlcall.sub, i32 2)
-    call void @llvm.lifetime.end.p0p10s_jl_value_ts(i64 16, %jl_value_t addrspace(10)** %jlcall.sub)
-    br i1 undef, label %loop, label %out
-out:
-    ret void
-}
 
 ; The system shouldn't really be generating things like this, but we can get unlucky
 define void @weird_alloca(i1 %cnd, i64 %a, i64 %b) {

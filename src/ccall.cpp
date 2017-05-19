@@ -488,7 +488,7 @@ static Value *runtime_apply_type(jl_value_t *ty, jl_unionall_t *unionall, jl_cod
     args[1] = literal_pointer_val((jl_value_t*)ctx->linfo->def->sig);
     args[2] = builder.CreateInBoundsGEP(
             LLVM37_param(T_prjlvalue)
-            emit_bitcast(ctx->spvals_ptr, T_pprjlvalue),
+            emit_bitcast(decay_derived(ctx->spvals_ptr), T_pprjlvalue),
             ConstantInt::get(T_size, sizeof(jl_svec_t) / sizeof(jl_value_t*)));
     return builder.CreateCall(prepare_call(jlapplytype_func), makeArrayRef(args));
 }

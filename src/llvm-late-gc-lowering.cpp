@@ -260,7 +260,7 @@ struct State {
     std::vector<BitVector> LiveSets;
     // The set of values for which this is the first safepoint along some
     // relevant path - i.e. the value needs to be rooted at this safepoint
-    std::vector<std::vector<int>> Rootings;
+    std::vector<std::set<int>> Rootings;
     // Those values that - if live out from our parent basic block - are live
     // at this safepoint.
     std::vector<std::vector<int>> LiveIfLiveOut;
@@ -321,7 +321,7 @@ private:
     void PushGCFrame(AllocaInst *gcframe, unsigned NRoots, Instruction *InsertAfter);
     void PopGCFrame(AllocaInst *gcframe, Instruction *InsertBefore);
     std::vector<int> ColorRoots(const State &S);
-    void PlaceRootsAndUpdateCalls(Function &F, const std::vector<int> &Colors, State &S, std::map<Value *, std::pair<int, int>>);
+    void PlaceRootsAndUpdateCalls(Function &F, std::vector<int> &Colors, State &S, std::map<Value *, std::pair<int, int>>);
     bool doInitialization(Module &M) override;
     bool runOnFunction(Function &F) override;
     Instruction *get_pgcstack(Instruction *ptlsStates);
@@ -532,7 +532,7 @@ static void NoteDef(State &S, BBState &BBS, int Num, const std::vector<int> &Saf
     if (!BBS.HasSafepoint)
         BBS.DownExposedUnrooted[Num] = 1;
     else if (HasBitSet(S.LiveSets[BBS.TopmostSafepoint], Num)) {
-        S.Rootings[BBS.TopmostSafepoint].push_back(Num);
+        S.Rootings[BBS.TopmostSafepoint].insert(Num);
     }
     // This value could potentially be live at any following safe point
     // if it ends up live out, so add it to the LiveIfLiveOut lists for all
@@ -577,7 +577,7 @@ static int NoteSafepoint(State &S, BBState &BBS, CallInst *CI) {
     BBS.UpExposedUses |= BBS.UpExposedUsesUnrooted;
     BBS.UpExposedUsesUnrooted.reset();
     S.LiveSets.push_back(BBS.UpExposedUses);
-    S.Rootings.push_back(std::vector<int>{});
+    S.Rootings.push_back(std::set<int>{});
     S.LiveIfLiveOut.push_back(std::vector<int>{});
     return Number;
 }
@@ -622,7 +622,7 @@ void RecursivelyVisit(callback f, Value *V) {
             isa<SelectInst>(TheUser) || isa<PHINode>(TheUser) ||
             isa<StoreInst>(TheUser))
             continue;
-        if (isa<GetElementPtrInst>(TheUser) || isa<BitCastInst>(TheUser)) {
+        if (isa<GetElementPtrInst>(TheUser) || isa<BitCastInst>(TheUser) || isa<AddrSpaceCastInst>(TheUser)) {
             RecursivelyVisit<VisitInst, callback>(f, TheUser);
             continue;
         }
@@ -739,7 +739,8 @@ State LateLowerGCFrame::LocalScan(Function &F) {
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     for (BasicBlock &BB : F) {
         BBState &BBS = S.BBStates[&BB];
-        for (Instruction &I : reverse(BB)) {
+        for (auto it = BB.rbegin(); it != BB.rend(); ++it) {
+            Instruction &I = *it;
             if (CallInst *CI = dyn_cast<CallInst>(&I)) {
                 if (isa<IntrinsicInst>(CI)) {
                     // Intrinsics are never GC uses/defs
@@ -798,7 +799,7 @@ State LateLowerGCFrame::LocalScan(Function &F) {
                                     BBState &LiftBBS = S.BBStates[Phi->getParent()];
                                     if (LiftBBS.Done) {
                                         // This is ok to do if we already processed that
-                                        // basic block, because we inserted it at the start
+                                        // basic block (up to phis), because we inserted it at the start
                                         // of the basic block, so we're not violating any
                                         // ordering constraints.
                                         MaybeNoteDef(S, LiftBBS, Lift, LiftBBS.Safepoints);
@@ -995,7 +996,7 @@ void LateLowerGCFrame::ComputeLiveSets(Function &F, State &S) {
             Mask &= S.BBStates[&BB].LiveIn;
             UnrootedIn &= Mask;
             for (int Idx = UnrootedIn.find_first(); Idx >= 0; Idx = UnrootedIn.find_next(Idx)) {
-                S.Rootings[S.BBStates[&BB].TopmostSafepoint].push_back(Idx);
+                S.Rootings[S.BBStates[&BB].TopmostSafepoint].insert(Idx);
             }
             // Backfill any interior rootings
             BitVector Interior = S.BBStates[&BB].UnrootedOut;
@@ -1009,7 +1010,7 @@ void LateLowerGCFrame::ComputeLiveSets(Function &F, State &S) {
                 while (true) {
                     auto sit = S.SafepointNumbering.find(&*it);
                     if (sit != S.SafepointNumbering.end()) {
-                        S.Rootings[sit->second].push_back(Idx);
+                        S.Rootings[sit->second].insert(Idx);
                         break;
                     }
                     assert(++it != Def->getParent()->end());
@@ -1197,7 +1198,7 @@ static Value *GetPtrForNumber(State &S, unsigned Num, Instruction *InsertionPoin
     return Val;
 }
 
-void LateLowerGCFrame::PlaceRootsAndUpdateCalls(Function &F, const std::vector<int> &Colors, State &S, std::map<Value *, std::pair<int, int>>) {
+void LateLowerGCFrame::PlaceRootsAndUpdateCalls(Function &F, std::vector<int> &Colors, State &S, std::map<Value *, std::pair<int, int>>) {
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     int MaxColor = -1;
     for (auto C : Colors)
@@ -1207,7 +1208,11 @@ void LateLowerGCFrame::PlaceRootsAndUpdateCalls(Function &F, const std::vector<i
     if (MaxColor != -1 || S.Allocas.size() != 0) {
         unsigned NRoots = MaxColor + 1 + S.Allocas.size();
         // Create GC Frame
-        AllocaInst *gcframe = new AllocaInst(T_prjlvalue, 0, ConstantInt::get(T_int32, NRoots+2), "gcframe");
+        AllocaInst *gcframe = new AllocaInst(T_prjlvalue,
+#if JL_LLVM_VERSION >= 50000
+           0,
+#endif
+        ConstantInt::get(T_int32, NRoots+2), "gcframe");
         gcframe->insertBefore(&*F.getEntryBlock().begin());
         // Zero out gcframe
         BitCastInst *tempSlot_i8 = new BitCastInst(gcframe, Type::getInt8PtrTy(F.getContext()), "");
@@ -1237,14 +1242,13 @@ void LateLowerGCFrame::PlaceRootsAndUpdateCalls(Function &F, const std::vector<i
             // Check for lifetime intrinsics on this alloca, we can't keep them
             // because we're changing the semantics
             std::vector<CallInst*> ToDelete;
-            for (User *User : AI->users()) {
-                auto *II = dyn_cast<IntrinsicInst>(User);
-                if (!II || (II->getIntrinsicID() != Intrinsic::lifetime_start &&
+            RecursivelyVisit<IntrinsicInst>([&](Use &VU) {
+                IntrinsicInst *II = cast<IntrinsicInst>(VU.getUser());
+                if ((II->getIntrinsicID() != Intrinsic::lifetime_start &&
                             II->getIntrinsicID() != Intrinsic::lifetime_end))
-                    continue;
-
+                    return;
                 ToDelete.push_back(II);
-            }
+            }, AI);
             for (CallInst *II : ToDelete)
                 II->eraseFromParent();
             AI->replaceAllUsesWith(gep);
@@ -1253,8 +1257,8 @@ void LateLowerGCFrame::PlaceRootsAndUpdateCalls(Function &F, const std::vector<i
         unsigned MinColorRoot = AllocaSlot;
         // Insert GC frame stores
         for (auto it : S.SafepointNumbering) {
-            const std::vector<int> &Rooting = S.Rootings[it.second];
-            for (auto R : Rooting) {
+            const std::set<int> &Rooting = S.Rootings[it.second];
+            for (int R : Rooting) {
                 if (Colors[R] != -1) {
                     Instruction *InsertionPoint = it.first;
                     Value *Val = S.ReversePtrNumbering[R];
@@ -1265,8 +1269,11 @@ void LateLowerGCFrame::PlaceRootsAndUpdateCalls(Function &F, const std::vector<i
                      * be dominated by the definition. In that case, just start
                      * rooting it right after the definition.
                      */
-                    if (isa<Instruction>(Val) && !DT.dominates(cast<Instruction>(Val), InsertionPoint))
+                    if (isa<Instruction>(Val) && !DT.dominates(cast<Instruction>(Val), InsertionPoint)) {
                         InsertionPoint = &*(++(cast<Instruction>(Val)->getIterator()));
+                        // No need to root this anywhere else any more
+                        Colors[R] = -1;
+                    }
                     Val = GetPtrForNumber(S, R, InsertionPoint);
                     Value *args[1] = {
                         ConstantInt::get(T_int32, Colors[R]+MinColorRoot)
