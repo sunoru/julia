@@ -68,8 +68,17 @@ function union(s::Set, sets::Set...)
     return u
 end
 const ∪ = union
-union!(s::Set, xs) = (for x=xs; push!(s,x); end; s)
-union!(s::Set, xs::AbstractArray) = (sizehint!(s,length(xs));for x=xs; push!(s,x); end; s)
+union!(s::Set, xs) = _union!(s, xs)
+union!(s::Set, xs::AbstractArray) = (sizehint!(s, length(xs)); _union!(s, xs))
+
+function _union!(s::Set{T}, xs) where T
+    for x=xs
+        push!(s,x)
+        length(s) == max_values(T) && break
+    end
+    s
+end
+
 join_eltype() = Bottom
 join_eltype(v1, vs...) = typejoin(eltype(v1), join_eltype(vs...))
 
