@@ -802,6 +802,8 @@ function type_more_complex(t::ANY, c::ANY, sources::SimpleVector)
         end
     elseif t === c
         return false
+    elseif isa(t, Int) && isa(c, Int)
+        return t === 1 # alternatively: 0 <= t < c
     end
     return true
 end
