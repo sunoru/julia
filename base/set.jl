@@ -70,7 +70,7 @@ end
 const ∪ = union
 
 function union!(s::Set{T}, xs) where T
-    isa(iteratorsize(xs), Union{HasShape, HasLength}) && sizehint!(s, length(xs))
+    haslength(xs) && sizehint!(s, length(xs))
     for x=xs
         push!(s,x)
         length(s) == max_values(T) && break
