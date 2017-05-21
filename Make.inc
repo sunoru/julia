@@ -1069,6 +1069,7 @@ CXXLDFLAGS += -L$(build_libdir) -lc++abi -lc++
 ifeq ($(USECLANG),1)
 CXXLDFLAGS += -stdlib=libc++
 else
+CXXFLAGS += -nostdinc++ -I$(build_includedir)/c++/v1
 CXXLDFLAGS += -nostdinc++ -nodefaultlibs -lm -lc -lgcc_s -lgcc
 endif # Clang
 CUSTOM_LD_LIBRARY_PATH := LD_LIBRARY_PATH="$(build_libdir)"

@@ -297,23 +297,23 @@ else
 BUILT_UNWIND :=
 endif # Building libunwind
 
-$(LLVM_SRC_DIR)/projects/libcxx: $(LLVM_LIBCXX_TAR) | $(LLVM_SRC_DIR)/source-extracted $(BUILT_UNWIND)
+$(LLVM_SRC_DIR)/projects/libcxx: $(LLVM_LIBCXX_TAR) | $(LLVM_SRC_DIR)/source-extracted
 	([ ! -d $@ ] && \
 	git clone $(LLVM_GIT_URL_LIBCXX) $@  ) || \
 	(cd $@  && \
 	git pull --ff-only)
 $(LLVM_SRC_DIR)/projects/libcxx/.git/HEAD: | $(LLVM_SRC_DIR)/projects/libcxx
-$(LLVM_SRC_DIR)/projects/libcxxabi: $(LLVM_LIBCXXABI_TAR) | $(LLVM_SRC_DIR)/source-extracted $(BUILT_UNWIND)
+$(LLVM_SRC_DIR)/projects/libcxxabi: $(LLVM_LIBCXXABI_TAR) | $(LLVM_SRC_DIR)/source-extracted
 	([ ! -d $@ ] && \
 	git clone $(LLVM_GIT_URL_LIBCXXABI) $@ ) || \
 	(cd $@ && \
 	git pull --ff-only)
 $(LLVM_SRC_DIR)/projects/libcxxabi/.git/HEAD: | $(LLVM_SRC_DIR)/projects/libcxxabi
-$(LLVM_BUILD_DIR)/libcxx-build/Makefile: | $(LLVM_SRC_DIR)/projects/libcxx $(LLVM_SRC_DIR)/projects/libcxxabi
+$(LLVM_BUILD_DIR)/libcxx-build/Makefile: | $(LLVM_SRC_DIR)/projects/libcxx $(LLVM_SRC_DIR)/projects/libcxxabi $(BUILT_UNWIND)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \
 		$(CMAKE) -G "Unix Makefiles" $(CMAKE_COMMON) $(LLVM_CMAKE_LIBCXX) -DLIBCXX_CXX_ABI=libcxxabi -DLIBCXX_CXX_ABI_INCLUDE_PATHS="$(LLVM_SRC_DIR)/projects/libcxxabi/include" $(LLVM_SRC_DIR)/projects/libcxx -DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) -L$(build_libdir) $(LIBCXX_EXTRA_FLAGS)"
-$(LLVM_BUILD_DIR)/libcxxabi-build/Makefile: | $(LLVM_SRC_DIR)/projects/libcxxabi $(LLVM_SRC_DIR)/projects/libcxx
+$(LLVM_BUILD_DIR)/libcxxabi-build/Makefile: | $(LLVM_SRC_DIR)/projects/libcxxabi $(LLVM_SRC_DIR)/projects/libcxx $(BUILT_UNWIND)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \
 		$(CMAKE) -G "Unix Makefiles" $(CMAKE_COMMON) $(LLVM_CMAKE_LIBCXX) -DLLVM_ABI_BREAKING_CHECKS="WITH_ASSERTS" -DLLVM_PATH="$(LLVM_SRC_DIR)" $(LLVM_SRC_DIR)/projects/libcxxabi -DLIBCXXABI_CXX_ABI_LIBRARIES="$(LIBCXX_EXTRA_FLAGS)" -DCMAKE_CXX_FLAGS="$(LLVM_CPPFLAGS) $(LLVM_CXXFLAGS) -std=c++11"

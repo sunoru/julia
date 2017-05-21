@@ -12,7 +12,7 @@ $(SRCDIR)/srccache/patchelf-$(PATCHELF_VER)/source-extracted: $(SRCDIR)/srccache
 $(BUILDDIR)/patchelf-$(PATCHELF_VER)/build-configured: $(SRCDIR)/srccache/patchelf-$(PATCHELF_VER)/source-extracted | $(LIBCXX_DEPENDENCY)
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \
-	$(dir $<)/configure $(CONFIGURE_COMMON) LDFLAGS="$(CXXLDFLAGS)" CPPFLAGS="$(CPPFLAGS)"
+	$(dir $<)/configure $(CONFIGURE_COMMON) LDFLAGS="$(CXXLDFLAGS)" CPPFLAGS="$(CPPFLAGS)" CXXFLAGS="$(CXXFLAGS)"
 	echo 1 > $@
 
 $(BUILDDIR)/patchelf-$(PATCHELF_VER)/build-compiled: $(BUILDDIR)/patchelf-$(PATCHELF_VER)/build-configured
