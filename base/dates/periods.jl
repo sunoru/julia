@@ -443,24 +443,35 @@ Base.promote_rule(::Type{Year}, ::Type{Month}) = Month
 (==)(x::FixedPeriod, y::OtherPeriod) = throw(MethodError(==, (x, y)))
 (==)(x::OtherPeriod, y::FixedPeriod) = throw(MethodError(==, (x, y)))
 
+const fixedperiod_seed = UInt === UInt64 ? 0x5b7fc751bba97516 : 0xeae0fdcb
+const otherperiod_seed = UInt === UInt64 ? 0xe1837356ff2d2ac9 : 0x170d1b00
+# Use Int128 so that even Week(typemax(Int64)) or Week(typemin(Int64))
+# can be converted to nanoseconds and Year(typemax(Int64)) or Year(typemin(Int64))
+# can be converted to months without overflow
+Base.hash(x::FixedPeriod, h::UInt) = hash(tons(Int128, x), h + fixedperiod_seed)
+Base.hash(x::Year, h::UInt) = hash(12 * Int128(value(x)), h + otherperiod_seed)
+Base.hash(x::Month, h::UInt) = hash(value(x), h + otherperiod_seed)
+
 Base.isless(x::FixedPeriod, y::OtherPeriod) = throw(MethodError(isless, (x, y)))
 Base.isless(x::OtherPeriod, y::FixedPeriod) = throw(MethodError(isless, (x, y)))
 
-# truncating conversions to milliseconds and days:
-toms(c::Nanosecond)  = div(value(c), 1000000)
-toms(c::Microsecond) = div(value(c), 1000)
-toms(c::Millisecond) = value(c)
-toms(c::Second)      = 1000 * value(c)
-toms(c::Minute)      = 60000 * value(c)
-toms(c::Hour)        = 3600000 * value(c)
-toms(c::Day)         = 86400000 * value(c)
-toms(c::Week)        = 604800000 * value(c)
-toms(c::Month)       = 86400000.0 * 30.436875 * value(c)
-toms(c::Year)        = 86400000.0 * 365.2425 * value(c)
+# truncating conversions to milliseconds, nanoseconds and days:
+toms(c) = toms(Int64, c)
+tons(x) = tons(Int64, x)
+toms(::Type{T}, c::Nanosecond)  where {T} = div(T(value(c)), 1000000)
+toms(::Type{T}, c::Microsecond) where {T} = div(T(value(c)), 1000)
+toms(::Type{T}, c::Millisecond) where {T} = T(value(c))
+toms(::Type{T}, c::Second)      where {T} = 1000 * T(value(c))
+toms(::Type{T}, c::Minute)      where {T} = 60000 * T(value(c))
+toms(::Type{T}, c::Hour)        where {T} = 3600000 * T(value(c))
+toms(::Type{T}, c::Day)         where {T} = 86400000 * T(value(c))
+toms(::Type{T}, c::Week)        where {T} = 604800000 * T(value(c))
+toms(::Type{T}, c::Month)       where {T} = 86400000.0 * 30.436875 * T(value(c))
+toms(::Type{T}, c::Year)        where {T} = 86400000.0 * 365.2425 * T(value(c))
 toms(c::CompoundPeriod) = isempty(c.periods) ? 0.0 : Float64(sum(toms, c.periods))
-tons(x)              = toms(x) * 1000000
-tons(x::Microsecond) = value(x) * 1000
-tons(x::Nanosecond)  = value(x)
+tons(::Type{T}, x)              where {T} = toms(T, x) * 1000000
+tons(::Type{T}, x::Microsecond) where {T} = T(value(x)) * 1000
+tons(::Type{T}, x::Nanosecond)  where {T} = T(value(x))
 days(c::Millisecond) = div(value(c), 86400000)
 days(c::Second)      = div(value(c), 86400)
 days(c::Minute)      = div(value(c), 1440)
