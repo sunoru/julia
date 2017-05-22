@@ -461,6 +461,7 @@ int LateLowerGCFrame::Number(State &S, Value *V) {
         return Number;
     } else if (isa<ExtractValueInst>(CurrentV) && !isUnionRep(CurrentV->getType())) {
         assert(false && "TODO: Extract");
+        abort();
     } else {
         assert(
             (CurrentV->getType()->isPointerTy() &&
@@ -1008,12 +1009,12 @@ void LateLowerGCFrame::ComputeLiveSets(Function &F, State &S) {
                 Instruction *Def = cast<Instruction>(S.ReversePtrNumbering[Idx]);
                 auto it = ++BasicBlock::iterator(Def);
                 while (true) {
-                    auto sit = S.SafepointNumbering.find(&*it);
+                    auto sit = S.SafepointNumbering.find(&*it++);
                     if (sit != S.SafepointNumbering.end()) {
                         S.Rootings[sit->second].insert(Idx);
                         break;
                     }
-                    assert(++it != Def->getParent()->end());
+                    assert(it != Def->getParent()->end());
                 }
             }
         }

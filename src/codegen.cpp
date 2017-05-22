@@ -3334,7 +3334,7 @@ static jl_cgval_t emit_call_function_object(jl_method_instance_t *li, const jl_c
             break;
         case jl_returninfo_t::SRet:
             result = emit_static_alloca(cft->getParamType(0)->getContainedType(0), ctx);
-            argvals[idx] = result;
+            argvals[idx] = decay_derived(result);
             idx++;
             break;
         case jl_returninfo_t::Union:
@@ -4518,7 +4518,7 @@ static Function *gen_cfun_wrapper(jl_function_t *ff, jl_value_t *jlrettype, jl_t
             if (sig.sret && jlfunc_sret)
                 result = emit_bitcast(sretPtr, cft->getParamType(0));
             else
-                result = builder.CreateAlloca(cft->getParamType(0)->getContainedType(0));
+                result = decay_derived(builder.CreateAlloca(cft->getParamType(0)->getContainedType(0)));
             args.push_back(result);
             FParamIndex++;
         }
@@ -4580,7 +4580,7 @@ static Function *gen_cfun_wrapper(jl_function_t *ff, jl_value_t *jlrettype, jl_t
                 // something of type T
                 // undo whatever we might have done to this poor argument
                 if (sig.byRefList.at(i)) {
-                    assert(val->getType() == sig.fargt[i]->getPointerTo());
+                    assert(cast<PointerType>(val->getType())->getElementType() == sig.fargt[i]);
                     val = builder.CreateAlignedLoad(val, 1); // unknown alignment from C
                 }
                 else {
@@ -5028,7 +5028,7 @@ static Function *gen_jlcall_wrapper(jl_method_instance_t *lam, const jl_returnin
         break;
     case jl_returninfo_t::SRet:
         result = builder.CreateAlloca(ftype->getParamType(0)->getContainedType(0));
-        args[idx] = result;
+        args[idx] = decay_derived(result);
         idx++;
         break;
     case jl_returninfo_t::Union:
@@ -5129,7 +5129,7 @@ static jl_returninfo_t get_specsig_function(Module *M, const std::string &name, 
         if (!retboxed) {
             if (rt != T_void && deserves_sret(jlrettype, rt)) {
                 props.cc = jl_returninfo_t::SRet;
-                fsig.push_back(rt->getPointerTo());
+                fsig.push_back(rt->getPointerTo(AddressSpace::Derived));
                 rt = T_void;
             }
             else {
