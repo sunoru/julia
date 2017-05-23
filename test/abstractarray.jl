@@ -375,8 +375,8 @@ function test_vector_indexing{T}(::Type{T}, shape, ::Type{TestAbstractArray})
         idxs = rand(1:N, 3, 3, 3)
         @test B[idxs] == A[idxs] == idxs
         @test B[vec(idxs)] == A[vec(idxs)] == vec(idxs)
-        @test B[:] == A[:] == collect(1:N)
-        @test B[1:end] == A[1:end] == collect(1:N)
+        @test B[:] == A[:] == 1:N
+        @test B[1:end] == A[1:end] == 1:N
         # @test B[:,:] == A[:,:] == reshape(1:N, shape[1], prod(shape[2:end])) # TODO: Re-enable after partial linear indexing deprecation
         # @test B[1:end,1:end] == A[1:end,1:end] == reshape(1:N, shape[1], prod(shape[2:end])) # TODO: Re-enable after partial linear indexing deprecation
 

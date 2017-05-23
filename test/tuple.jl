@@ -57,8 +57,8 @@ end
 @test_throws BoundsError next((5,6,7), 0)
 @test_throws BoundsError next((), 1)
 
-@test collect(eachindex((2,5,"foo"))) == collect(1:3)
-@test collect(eachindex((2,5,"foo"), (1,2,5,7))) == collect(1:4)
+@test eachindex((2,5,"foo")) == 1:3
+@test eachindex((2,5,"foo"), (1,2,5,7)) == 1:4
 
 
 ## eltype ##
@@ -195,7 +195,7 @@ end
 struct BitPerm_19352
     p::NTuple{8,UInt8}
     function BitPerm(p::NTuple{8,UInt8})
-        sort(collect(p)) != collect(0:7) && error("$p is not a permutation of 0:7")
+        sort(collect(p)) != 0:7 && error("$p is not a permutation of 0:7")
         new(p)
     end
     BitPerm_19352(b0,b1,b2,b3,b4,b5,b6,b7) = BitPerm((UInt8(b0),UInt8(b1),UInt8(b2),UInt8(b3),

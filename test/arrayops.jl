@@ -1110,7 +1110,7 @@ end
     # base case w/ Vector
     a = collect(1:10)
     filter!(x -> x > 5, a)
-    @test a == collect(6:10)
+    @test a == 6:10
 
     # different subtype of AbstractVector
     ba = rand(10) .> 0.5
@@ -1721,8 +1721,8 @@ B = 1.5:5.5
 @testset "slicedim" begin
     for A in (reshape(collect(1:20), 4, 5),
               reshape(1:20, 4, 5))
-        @test slicedim(A, 1, 2) == collect(2:4:20)
-        @test slicedim(A, 2, 2) == collect(5:8)
+        @test slicedim(A, 1, 2) == 2:4:20
+        @test slicedim(A, 2, 2) == 5:8
         @test_throws ArgumentError slicedim(A,0,1)
         @test slicedim(A, 3, 1) == A
         @test_throws BoundsError slicedim(A, 3, 2)

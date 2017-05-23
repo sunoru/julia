@@ -192,7 +192,7 @@ end
     setdiff!(s1, IntSet(1:2:100))
     s2 = setdiff(IntSet(1:100), IntSet(1:2:100))
     @test s1 == s2 == IntSet(2:2:100)
-    @test collect(s1) == collect(2:2:100)
+    @test collect(s1) == 2:2:100
 
     @test symdiff(IntSet([1, 2, 3, 4]), IntSet([2, 4, 5, 6])) ==
           symdiff(IntSet([2, 4, 5, 6]), IntSet([1, 2, 3, 4])) ==
@@ -272,7 +272,7 @@ end
 
     b = 1:1000
     s = IntSet(b)
-    @test collect(s) == collect(b)
+    @test collect(s) == b
     @test length(s) === length(b)
     @test pop!(s, 100) === 100
     @test collect(s) == [1:99; 101:1000]
