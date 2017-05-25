@@ -1348,6 +1348,20 @@ end
 @deprecate srand(filename::AbstractString, n::Integer=4) srand(read!(filename, Array{UInt32}(Int(n))))
 @deprecate MersenneTwister(filename::AbstractString)  srand(MersenneTwister(0), read!(filename, Array{UInt32}(Int(4))))
 
+# PR #22062
+function LibGit2.set_remote_url(repo::LibGit2.GitRepo, url::AbstractString; remote::AbstractString="origin")
+    Base.depwarn(string(
+        "`LibGit2.set_remote_url(repo, url; remote=remote)` is deprecated, use ",
+        "`LibGit2.set_remote_url(repo, remote, url)` instead."), :set_remote_url)
+    LibGit2.set_remote_url(repo, remote, url)
+end
+function LibGit2.set_remote_url(path::AbstractString, url::AbstractString; remote::AbstractString="origin")
+    Base.depwarn(string(
+        "`LibGit2.set_remote_url(path, url; remote=remote)` is deprecated, use ",
+        "`LibGit2.set_remote_url(path, remote, url)` instead."), :set_remote_url)
+    LibGit2.set_remote_url(path, remote, url)
+end
+
 # END 0.7 deprecations
 
 # BEGIN 1.0 deprecations
