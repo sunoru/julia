@@ -178,8 +178,7 @@ static const int jl_gc_sizeclasses[JL_GC_N_POOLS] = {
 
 STATIC_INLINE int JL_CONST_FUNC jl_gc_alignsz(size_t sz, size_t alignment)
 {
-    // The pools are aligned wit JL_CACHE_BYTE_ALIGNMENT (typically 64)
-    // and we can't guarantee a bigger alignment.
+    // The pools are aligned with JL_HEAP_ALIGNMENT and no bigger alignment is possible.
     assert(alignment <= JL_HEAP_ALIGNMENT);
     // Pools with the correct alignment will have an object size that
     // is a multiple of the alignment. As an example an allocation with
@@ -240,6 +239,7 @@ STATIC_INLINE jl_value_t *jl_gc_alloc_(jl_ptls_t ptls, size_t sz, size_t alignme
         else {
             osize = p->osize;
         }
+        assert(osize >= alignment && osize % alignment == 0);
         v = jl_gc_pool_alloc(ptls, (char*)p - (char*)ptls, osize);
     }
     else {
