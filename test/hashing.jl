@@ -77,7 +77,7 @@ vals = Any[
     # issue #16364
     1:4, 1:1:4, 1:-1:0, 1.0:4.0, 1.0:1.0:4.0, linspace(1, 4, 4),
     'a':'e', ['a', 'b', 'c', 'd', 'e'],
-    # check that hash is still consistent with heteregeneous arrays for which - is defined
+    # check that hash is still consistent with heterogeneous arrays for which - is defined
     # for some pairs and not others
     ["a", "b", 1, 2], ["a", 1, 2], ["a", "b", 2, 2], ["a", "a", 1, 2], ["a", "b", 2, 3]
 ]
