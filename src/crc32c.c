@@ -45,8 +45,10 @@
 
 #include "crc32c.h"
 
+#include "processor.h"
+
 #if defined(_CPU_X86_64_) && !defined(_COMPILER_MICROSOFT_)
-#  define HW_CRC
+#  define CRC_SSE42
 #endif
 
 /* CRC-32C (iSCSI) polynomial in reversed bit order. */
@@ -74,7 +76,6 @@ static uint32_t crc32c_sw(uint32_t crci, const void *buf, size_t len)
     const unsigned char *next = (const unsigned char *) buf;
     uint64_t crc;
 
-    /* pthread_once(&crc32c_once_sw, crc32c_init_sw); */
     crc = crci ^ 0xffffffff;
     while (len && ((uintptr_t)next & 7) != 0) {
         crc = crc32c_table[0][(crc ^ *next++) & 0xff] ^ (crc >> 8);
@@ -100,7 +101,7 @@ static uint32_t crc32c_sw(uint32_t crci, const void *buf, size_t len)
     return (uint32_t)crc ^ 0xffffffff;
 }
 
-#ifdef HW_CRC
+#ifdef CRC_SSE42
 
 /* Apply the zeros operator table to crc. */
 static inline uint32_t crc32c_shift(const uint32_t zeros[][256], uint32_t crc)
@@ -110,14 +111,11 @@ static inline uint32_t crc32c_shift(const uint32_t zeros[][256], uint32_t crc)
 }
 
 /* Compute CRC-32C using the Intel hardware instruction. */
-static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
+static uint32_t crc32c_sse42(uint32_t crc, const void *buf, size_t len)
 {
     const unsigned char *next = (const unsigned char *) buf;
     const unsigned char *end;
     uint64_t crc0, crc1, crc2;      /* need to be 64 bits for crc32q */
-
-    /* populate shift tables the first time through */
-    /* pthread_once(&crc32c_once_hw, crc32c_init_hw); */
 
     /* pre-process the crc */
     crc0 = crc ^ 0xffffffff;
@@ -142,8 +140,8 @@ static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
         end = next + LONG;
         do {
             __asm__("crc32q\t" "(%3), %0\n\t"
-                                        "crc32q\t" LONGx1 "(%3), %1\n\t"
-                                        "crc32q\t" LONGx2 "(%3), %2"
+                    "crc32q\t" LONGx1 "(%3), %1\n\t"
+                    "crc32q\t" LONGx2 "(%3), %2"
                     : "=r"(crc0), "=r"(crc1), "=r"(crc2)
                     : "r"(next), "0"(crc0), "1"(crc1), "2"(crc2));
             next += 8;
@@ -162,8 +160,8 @@ static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
         end = next + SHORT;
         do {
             __asm__("crc32q\t" "(%3), %0\n\t"
-                                        "crc32q\t" SHORTx1 "(%3), %1\n\t"
-                                        "crc32q\t" SHORTx2 "(%3), %2"
+                    "crc32q\t" SHORTx1 "(%3), %1\n\t"
+                    "crc32q\t" SHORTx2 "(%3), %2"
                     : "=r"(crc0), "=r"(crc1), "=r"(crc2)
                     : "r"(next), "0"(crc0), "1"(crc1), "2"(crc2));
             next += 8;
@@ -198,48 +196,34 @@ static uint32_t crc32c_hw(uint32_t crc, const void *buf, size_t len)
     return (uint32_t)crc0 ^ 0xffffffff;
 }
 
-/* Check for SSE 4.2.  SSE 4.2 was first supported in Nehalem processors
-   introduced in November, 2008.  This does not check for the existence of the
-   cpuid instruction itself, which was introduced on the 486SL in 1992, so this
-   will fail on earlier x86 processors.  cpuid works on all Pentium and later
-   processors. */
-#define SSE42(have) \
-    do { \
-        uint32_t eax, ecx; \
-        eax = 1; \
-        __asm__("cpuid" \
-                : "=c"(ecx) \
-                : "a"(eax) \
-                : "%ebx", "%edx"); \
-        (have) = (ecx >> 20) & 1; \
-    } while (0)
+#endif /* ifdef CRC_SSE42 */
 
-static int sse42 = 0;
+static uint32_t crc32c_dispatch(uint32_t crc, const void *buf, size_t len);
 
-#endif /* ifdef HW_CRC */
+static uint32_t (*crc32c_func)(uint32_t crc, const void *buf, size_t len) = crc32c_dispatch;
 
-/* jl_crc32c_init must be called before jl_crc32c.  Passing 1
-   can be used to force the use of the software implementation,
-   which is useful for testing purposes. */
+// This is exported for test only
 JL_DLLEXPORT void jl_crc32c_init(int force_sw)
 {
-#ifdef HW_CRC
-    if (force_sw)
-        sse42 = 0; /* useful for testing purposes */
-    else
-        SSE42(sse42);
+#ifdef CRC_SSE42
+    if (jl_test_cpu_feature(JL_X86_sse42)) {
+        crc32c_func = crc32c_sse42;
+        return;
+    }
 #endif
+    crc32c_func = crc32c_sw;
 }
 
-/* Compute a CRC-32C.  If the crc32 instruction is available, use the hardware
-   version.  Otherwise, use the software version. */
+static uint32_t crc32c_dispatch(uint32_t crc, const void *buf, size_t len)
+{
+    jl_crc32c_init(0);
+    return crc32c_func(crc, buf, len);
+}
+
+/* Compute a CRC-32C. Pick the best implementation lazily on first call. */
 JL_DLLEXPORT uint32_t jl_crc32c(uint32_t crc, const void *buf, size_t len)
 {
-    return
-#ifdef HW_CRC
-    sse42 ? crc32c_hw(crc, buf, len) :
-#endif
-    crc32c_sw(crc, buf, len);
+    return crc32c_func(crc, buf, len);
 }
 
 /*****************************************************************************/
@@ -398,10 +382,10 @@ int main(void)
     crc32c_init_sw();
     print_array("crc32c_table", 8, 256, &crc32c_table[0][0]);
     crc32c_init_hw();
-    printf("\n#ifdef HW_CRC\n");
+    printf("\n#ifdef CRC_SSE42\n");
     print_array("crc32c_long", 4, 256, &crc32c_long[0][0]);
     print_array("crc32c_short", 4, 256, &crc32c_short[0][0]);
-    printf("#endif /* HW_CRC */\n");
+    printf("#endif /* CRC_SSE42 */\n");
     return 0;
 }
 

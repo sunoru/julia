@@ -5,6 +5,7 @@
   system initialization and global state
 */
 #include "platform.h"
+#include "crc32c.h"
 
 #include <stdlib.h>
 #include <string.h>

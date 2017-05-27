@@ -45,7 +45,7 @@ SRCS := \
 	simplevector APInt-C runtime_intrinsics runtime_ccall precompile \
 	threadgroup threading stackwalk gc gc-debug gc-pages method \
 	jlapi signal-handling safepoint jloptions timing subtype rtutils \
-	processor
+	processor crc32c
 
 ifeq ($(USEMSVC), 1)
 SRCS += getopt
