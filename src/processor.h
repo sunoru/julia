@@ -55,6 +55,12 @@ typedef enum {
 #define X86_FEATURE_DEF(name, bit, llvmver) JL_X86_##name = bit,
 #include "features_x86.h"
 #undef X86_FEATURE_DEF
+#define ARM_FEATURE_DEF(name, bit, llvmver) JL_ARM_##name = bit,
+#include "features_arm.h"
+#undef ARM_FEATURE_DEF
+#define AArch64_FEATURE_DEF(name, bit, llvmver) JL_AArch64_##name = bit,
+#include "features_aarch64.h"
+#undef AArch64_FEATURE_DEF
 } jl_cpu_feature_t;
 
 int jl_test_cpu_feature(jl_cpu_feature_t feature);
