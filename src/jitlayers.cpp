@@ -1184,7 +1184,8 @@ void jl_dump_native(const char *bc_fname, const char *obj_fname, const char *sys
 #else
         Reloc::Default,
 #endif
-        CodeModel::Default,
+        // Use small model so that we can use signed 32bits offset in cloning pass.
+        CodeModel::Small,
         CodeGenOpt::Aggressive // -O3 TODO: respect command -O0 flag?
         ));
 
