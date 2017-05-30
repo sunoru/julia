@@ -2217,48 +2217,6 @@ JL_DLLEXPORT jl_svec_t *jl_env_from_type_intersection(jl_value_t *a, jl_value_t 
 
 // specificity comparison
 
-/*
-Simplification of varargs tuple types:
- JL_TUPLE_FIXED: tuples of known length (e.g., JL_VARARG_NONE or JL_VARARG_INT)
- JL_TUPLE_VAR:   tuples of unknown length (e.g., JL_VARARG_BOUND or JL_VARARG_UNBOUND)
-
-In some cases, JL_VARARG_BOUND tuples get described as JL_TUPLE_FIXED,
-if the constraints on length are already known.
-
-lenr = "representation length" (the number of parameters)
-lenf = "full length" (including the Vararg length, if known)
-
-In general, lenf >= lenr-1. The lower bound is achieved only for a Vararg of length 0.
-*/
-typedef enum {
-    JL_TUPLE_FIXED = 0,
-    JL_TUPLE_VAR   = 1
-} jl_tuple_lenkind_t;
-
-static size_t tuple_vararg_params(jl_svec_t *a, jl_vararg_kind_t *kind, jl_tuple_lenkind_t *lenkind)
-{
-    jl_value_t **data = jl_svec_data(a); size_t lenr = jl_svec_len(a);
-    size_t lenf = lenr;
-    if (lenr == 0) {
-        *kind = JL_VARARG_NONE;
-        *lenkind = JL_TUPLE_FIXED;
-        return lenf;
-    }
-    *lenkind = JL_TUPLE_VAR;
-    jl_value_t *last = data[lenr-1];
-    *kind = jl_vararg_kind(last);
-    if (*kind == JL_VARARG_NONE || *kind == JL_VARARG_INT)
-        *lenkind = JL_TUPLE_FIXED;
-    if (*kind == JL_VARARG_INT || *kind == JL_VARARG_BOUND) {
-        jl_value_t *N = jl_tparam1(jl_unwrap_unionall(last));
-        if (jl_is_long(N)) {
-            lenf += jl_unbox_long(N)-1;
-            *lenkind = JL_TUPLE_FIXED;
-        }
-    }
-    return lenf;
-}
-
 static int eq_msp(jl_value_t *a, jl_value_t *b, jl_typeenv_t *env)
 {
     // equate ANY and Any for specificity purposes, #16153
@@ -2298,60 +2256,60 @@ static int type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant, jl_ty
 
 static int num_occurs(jl_tvar_t *v, jl_typeenv_t *env);
 
+static jl_value_t *nth_tuple_elt(jl_datatype_t *t, size_t i)
+{
+    size_t len = jl_field_count(t);
+    if (len == 0)
+        return NULL;
+    if (i < len-1)
+        return jl_tparam(t, i);
+    jl_value_t *last = jl_unwrap_unionall(jl_tparam(t, len-1));
+    if (jl_is_vararg_type(last)) {
+        jl_value_t *n = jl_tparam1(last);
+        if (jl_is_long(n) && i >= len-1+jl_unbox_long(n))
+            return NULL;
+        return jl_tparam0(last);
+    }
+    if (i == len-1)
+        return jl_tparam(t, i);
+    return NULL;
+}
+
 static int tuple_morespecific(jl_datatype_t *cdt, jl_datatype_t *pdt, int invariant, jl_typeenv_t *env)
 {
-    size_t clenr = jl_nparams(cdt);
-    jl_value_t **child = jl_svec_data(cdt->parameters);
     size_t plenr = jl_nparams(pdt);
-    jl_value_t **parent = jl_svec_data(pdt->parameters);
-    size_t plenf, clenf;
-    jl_vararg_kind_t ckind, pkind;
-    jl_tuple_lenkind_t clenkind, plenkind;
-    clenf = tuple_vararg_params(cdt->parameters, &ckind, &clenkind);
-    plenf = tuple_vararg_params(pdt->parameters, &pkind, &plenkind);
-    size_t ci=0, pi=0;
-    int cseq=0, pseq=0, cdiag=0, pdiag=0;
+    if (plenr == 0) return 0;
+    size_t clenr = jl_nparams(cdt);
+    if (clenr == 0) return 1;
+    int i = 0;
+    int cva = jl_vararg_kind(jl_tparam(cdt,clenr-1)) > JL_VARARG_INT;
+    int pva = jl_vararg_kind(jl_tparam(pdt,plenr-1)) > JL_VARARG_INT;
+    int cdiag = 0, pdiag = 0;
     int some_morespecific = 0;
-    jl_value_t *ce=NULL, *pe=NULL;
     while (1) {
-        if (!cseq)
-            cseq = (ci<clenr) && clenkind != JL_TUPLE_FIXED && jl_is_vararg_type(child[ci]);
-        if (!pseq)
-            pseq = (pi<plenr) && plenkind != JL_TUPLE_FIXED && jl_is_vararg_type(parent[pi]);
+        if (cva && pva && i >= clenr && i >= plenr) break;
+        jl_value_t *ce = nth_tuple_elt(cdt, i);
+        jl_value_t *pe = nth_tuple_elt(pdt, i);
 
-        if (ci >= clenf && !cseq) {
-            if (pseq && plenr <= clenr+1) return 1;
-            // shorter tuples are more specific, to ensure transitivity with varargs
-            if (!pseq && clenr < plenr) return 1;
-            if (!pseq && clenr > plenr) return 0;
+        if (ce == NULL) {
+            if (pe == NULL) break;
+            return 1;
+        }
+        if (pe == NULL) {
+            if (!cva && !some_morespecific) return 0;
             break;
         }
-        if (pi >= plenf && !pseq) {
-            if (!cseq && plenr < clenr && !some_morespecific) return 0;
-            break;
-        }
-
-        if (ci < clenr) {
-            ce = child[ci];
-            if (jl_is_vararg_type(ce)) ce = jl_unwrap_vararg(ce);
-        }
-        if (pi < plenr) {
-            pe = parent[pi];
-            if (jl_is_vararg_type(pe)) pe = jl_unwrap_vararg(pe);
-        }
-
         if (type_morespecific_(pe, ce, invariant, env)) {
             assert(!type_morespecific_(ce, pe, invariant, env));
             return 0;
         }
-
         if (!cdiag && jl_is_typevar(ce) && num_occurs((jl_tvar_t*)ce,env) > 1)
             cdiag = 1;
         if (!pdiag && jl_is_typevar(pe) && num_occurs((jl_tvar_t*)pe,env) > 1)
             pdiag = 1;
 
         // in Tuple{a,b...} and Tuple{c,d...} allow b and d to be disjoint
-        if (cseq && pseq && (some_morespecific || (cdiag && !pdiag))) return 1;
+        if (cva && pva && i >= clenr-1 && i >= plenr-1 && (some_morespecific || (cdiag && !pdiag))) return 1;
 
         int cms = type_morespecific_(ce, pe, invariant, env);
         int eqv = !cms && eq_msp(ce, pe, env);
@@ -2359,22 +2317,24 @@ static int tuple_morespecific(jl_datatype_t *cdt, jl_datatype_t *pdt, int invari
         if (!cms && !eqv) return 0;
 
         if (cms) some_morespecific = 1;
-
-        if (cms && ci==clenr-1 && pi==plenr-1 && clenr == plenr && !cseq && pseq) {
-            // make Vararg{X, 1} more specific than Vararg{X, N}
-            if (jl_is_vararg_type(child[ci]) && eqv)
-                return 1;
-        }
-
-        if (cseq && pseq) {
-            if (clenr > plenr && (!pdiag || cdiag))
-                return 1;
-            break;
-        }
-        ci++;
-        pi++;
+        i++;
     }
+    if (cva && pva && clenr > plenr && (!pdiag || cdiag))
+        return 1;
     return some_morespecific || (cdiag && !pdiag);
+}
+
+static size_t tuple_full_length(jl_value_t *t)
+{
+    size_t n = jl_nparams(t);
+    if (n == 0) return 0;
+    jl_value_t *last = jl_unwrap_unionall(jl_tparam(t,n-1));
+    if (jl_is_vararg_type(last)) {
+        jl_value_t *N = jl_tparam1(last);
+        if (jl_is_long(N))
+            n += jl_unbox_long(N)-1;
+    }
+    return n;
 }
 
 // Called when a is a bound-vararg and b is not a vararg. Sets the vararg length
@@ -2382,13 +2342,14 @@ static int tuple_morespecific(jl_datatype_t *cdt, jl_datatype_t *pdt, int invari
 static int args_morespecific_fix1(jl_value_t *a, jl_value_t *b, int swap, jl_typeenv_t *env)
 {
     size_t n = jl_nparams(a);
-    int nfix = jl_nparams(b)-n+1;
-    assert(jl_is_va_tuple(a));
-    assert(nfix >= 0);
+    int nfix = tuple_full_length(b)-n+1;
+    if (nfix <= 0)
+        return -1;
+    assert(jl_is_va_tuple((jl_datatype_t*)a));
     jl_datatype_t *newtta = NULL;
-    jl_value_t *env[2] = { jl_tparam1(jl_unwrap_unionall(jl_tparam(a, n-1))), jl_box_long(nfix) };
-    JL_GC_PUSH2(&newtta, &env[1]);
-    newtta = (jl_datatype_t*)jl_instantiate_type_with((jl_value_t*)a, env, 1);
+    jl_value_t *e[2] = { jl_tparam1(jl_unwrap_unionall(jl_tparam(a, n-1))), jl_box_long(nfix) };
+    JL_GC_PUSH2(&newtta, &e[1]);
+    newtta = (jl_datatype_t*)jl_instantiate_type_with((jl_value_t*)a, e, 1);
     int changed = 0;
     for (size_t i = 0; i < n-1; i++) {
         if (jl_tparam(a, i) != jl_tparam(newtta, i)) {
@@ -2473,19 +2434,14 @@ static int type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant, jl_ty
     }
 
     if (jl_is_tuple_type(a) && jl_is_tuple_type(b)) {
-        jl_datatype_t *tta = (jl_datatype_t*)a;
-        jl_datatype_t *ttb = (jl_datatype_t*)b;
-        size_t alenf, blenf;
-        jl_vararg_kind_t akind, bkind;
-        jl_tuple_lenkind_t alenkind, blenkind;
-        alenf = tuple_vararg_params(tta->parameters, &akind, &alenkind);
-        blenf = tuple_vararg_params(ttb->parameters, &bkind, &blenkind);
         // When one is JL_VARARG_BOUND and the other has fixed length,
         // allow the argument length to fix the tvar
+        jl_vararg_kind_t ak = jl_va_tuple_kind((jl_datatype_t*)a);
+        jl_vararg_kind_t bk = jl_va_tuple_kind((jl_datatype_t*)b);
         int ans = -1;
-        if (akind == JL_VARARG_BOUND && blenkind == JL_TUPLE_FIXED && blenf >= alenf)
+        if (ak == JL_VARARG_BOUND && bk < JL_VARARG_BOUND)
             ans = args_morespecific_fix1(a, b, 0, env);
-        if (bkind == JL_VARARG_BOUND && alenkind == JL_TUPLE_FIXED && alenf >= blenf)
+        if (bk == JL_VARARG_BOUND && ak < JL_VARARG_BOUND)
             ans = args_morespecific_fix1(b, a, 1, env);
         if (ans != -1) return ans;
         return tuple_morespecific((jl_datatype_t*)a, (jl_datatype_t*)b, invariant, env);
