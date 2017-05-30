@@ -2513,7 +2513,7 @@ static int type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant, jl_ty
                     }
                 }
                 assert(jl_nparams(tta) == jl_nparams(ttb));
-                int ascore=0, bscore=0, ascore1=0, bscore1=0;
+                int ascore=0, bscore=0, ascore1=0, bscore1=0, adiag=0, bdiag=0;
                 for(size_t i=0; i < jl_nparams(tta); i++) {
                     jl_value_t *apara = jl_tparam(tta,i);
                     jl_value_t *bpara = jl_tparam(ttb,i);
@@ -2522,15 +2522,29 @@ static int type_morespecific_(jl_value_t *a, jl_value_t *b, int invariant, jl_ty
                     else if (type_morespecific_(bpara, apara, 1, env))
                         bscore += 1;
                     if (jl_is_typevar(bpara) && !jl_is_typevar(apara) && !jl_is_type(apara))
-                        ascore1 += 1;
+                        ascore1 = 1;
                     else if (jl_is_typevar(apara) && !jl_is_typevar(bpara) && !jl_is_type(bpara))
-                        bscore1 += 1;
+                        bscore1 = 1;
+                    if (!adiag && jl_is_typevar(apara)) {
+                        for(int j=i+1; j < jl_nparams(tta); j++) {
+                            if (jl_has_typevar(jl_tparam(tta,j), (jl_tvar_t*)apara)) {
+                                adiag = 1; break;
+                            }
+                        }
+                    }
+                    if (!bdiag && jl_is_typevar(bpara)) {
+                        for(int j=i+1; j < jl_nparams(ttb); j++) {
+                            if (jl_has_typevar(jl_tparam(ttb,j), (jl_tvar_t*)bpara)) {
+                                bdiag = 1; break;
+                            }
+                        }
+                    }
                 }
-                if (bscore1 == 0 && ascore1 > 0)
+                if (ascore1 > bscore1)
                     return 1;
-                if (ascore1 == 0 && bscore1 > 0)
+                if (bscore1 > ascore1 || bscore > ascore || bdiag > adiag)
                     return 0;
-                return ascore > bscore;
+                return ascore > bscore || adiag > bdiag;
             }
             else if (invariant) {
                 return 0;
