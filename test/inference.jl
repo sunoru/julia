@@ -788,3 +788,8 @@ let T = Tuple{Tuple{Int64, Void},
     @test Core.Inference.limit_type_depth(T, 1) >: T
     @test Core.Inference.limit_type_depth(T, 2) >: T
 end
+
+# issue #21653
+# ensure that we don't try to resolve cycles using uncached edges
+f21653() = f21653()
+@test code_typed(f21653, Tuple{}, optimize=false)[1] isa Pair{CodeInfo, typeof(Union{})}
